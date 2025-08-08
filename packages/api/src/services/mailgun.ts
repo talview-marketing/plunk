@@ -28,7 +28,7 @@ try {
   }
 } catch (error) {
   console.error("Failed to initialize Mailgun client:", error);
-  // Fallback to mock client
+
   mgClient = {
     messages: {
       create: async () => ({ id: `mock-${Date.now()}` })
