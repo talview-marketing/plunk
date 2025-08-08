@@ -35,8 +35,6 @@ if (!APP_URI.startsWith("http")) {
 	throw new Error("APP_URI must start with 'http'");
 }
 
-// AWS
-export const AWS_REGION = validateEnv("AWS_REGION");
-export const AWS_ACCESS_KEY_ID = validateEnv("AWS_ACCESS_KEY_ID");
-export const AWS_SECRET_ACCESS_KEY = validateEnv("AWS_SECRET_ACCESS_KEY");
-export const AWS_SES_CONFIGURATION_SET = validateEnv("AWS_SES_CONFIGURATION_SET");
+// Mailgun
+export const MAILGUN_API_KEY = process.env.MAILGUN_API_KEY || "";
+export const MAILGUN_DOMAIN = process.env.MAILGUN_DOMAIN || "";

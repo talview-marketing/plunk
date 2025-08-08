@@ -32,3 +32,13 @@ export class NotAuthenticated extends HttpException {
     super(401, 'You need to be authenticated to do this');
   }
 }
+export class BadRequest extends HttpException {
+  /**
+   * Construct a new BadRequest exception
+   * @param message Detail about why the request is bad
+   */
+  public constructor(message = 'Bad request') {
+    super(400, message);
+  }
+}
+

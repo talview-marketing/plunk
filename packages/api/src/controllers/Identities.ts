@@ -8,7 +8,7 @@ import { type IJwt, isAuthenticated } from "../middleware/auth";
 import { ProjectService } from "../services/ProjectService";
 import { Keys } from "../services/keys";
 import { redis } from "../services/redis";
-import { getIdentities, getIdentityVerificationAttributes, ses, verifyIdentity } from "../util/ses";
+import { mgClient } from "../services/mailgun";
 
 @Controller("identities")
 export class Identities {
@@ -27,7 +27,7 @@ export class Identities {
 			return res.status(200).json({ success: false });
 		}
 
-		const attributes = await getIdentityVerificationAttributes(project.email);
+		const attributes = await this.getIdentityVerificationAttributes(project.email);
 
 		if (attributes.status === "Success" && !project.verified) {
 			await prisma.project.update({ where: { id }, data: { verified: true } });
@@ -61,7 +61,7 @@ export class Identities {
 			throw new Error("Domain already attached to another project");
 		}
 
-		const tokens = await verifyIdentity(email);
+		const tokens = await this.verifyIdentity(email);
 
 		await prisma.project.update({
 			where: { id },
@@ -112,9 +112,9 @@ export class Identities {
 				take: 99,
 			});
 
-			const awsIdentities = await getIdentities(dbIdentities.map((i) => i.email as string));
+			const mailgunIdentities = await this.getIdentities(dbIdentities.map((i) => i.email as string));
 
-			for (const identity of awsIdentities) {
+			for (const identity of mailgunIdentities) {
 				const projectId = dbIdentities.find((i) => i.email?.endsWith(identity.email));
 
 				const project = await ProjectService.id(projectId?.id as string);
@@ -122,11 +122,11 @@ export class Identities {
 				if (identity.status === "Failed") {
 					signale.info(`Restarting verification for ${identity.email}`);
 					try {
-						void verifyIdentity(identity.email);
+						void this.verifyIdentity(identity.email);
 					} catch (e) {
-						// @ts-ignore
-						if (e.Code === "Throttling") {
-							signale.warn("Throttling detected, waiting 5 seconds");
+						// Handle Mailgun rate limiting
+						if ((e as any).status === 429) {
+							signale.warn("Rate limiting detected, waiting 5 seconds");
 							await new Promise((r) => setTimeout(r, 5000));
 						}
 					}
@@ -139,10 +139,6 @@ export class Identities {
 
 				if (project && !project.verified && identity.status === "Success") {
 					signale.success(`Successfully verified ${identity.email}`);
-					void ses.setIdentityFeedbackForwardingEnabled({
-						Identity: identity.email,
-						ForwardingEnabled: false,
-					});
 
 					await redis.del(Keys.Project.id(project.id));
 					await redis.del(Keys.Project.secret(project.secret));
@@ -158,5 +154,112 @@ export class Identities {
 		}
 
 		return res.status(200).json({ success: true });
+	}
+
+	// Mailgun helper methods
+	private async getIdentities(identities: string[]): Promise<{ email: string; status: string }[]> {
+		const domains = identities.map((identity) => identity.split("@")[1]);
+		const results: { email: string; status: string }[] = [];
+
+		for (const domain of domains) {
+			try {
+				const response = await mgClient.domains.get(domain);
+				const domainInfo = response as any;
+				
+				// Map Mailgun status to SES-like status
+				let status = "Failed";
+				if (domainInfo.status === "active") {
+					status = "Success";
+				} else if (domainInfo.status === "unverified") {
+					status = "PendingVerification";
+				}
+
+				results.push({ email: domain, status });
+			} catch (error: any) {
+				// Domain not found or other error, treat as failed
+				signale.warn(`Failed to get domain info for ${domain}: ${error.message}`);
+				results.push({ email: domain, status: "Failed" });
+			}
+		}
+
+		return results;
+	}
+
+	private async verifyIdentity(email: string): Promise<string[]> {
+		const domain = email.includes("@") ? email.split("@")[1] : email;
+
+		try {
+			// Add domain to Mailgun
+			const response = await mgClient.domains.create({
+				name: domain,
+				web_scheme: "https",
+				smtp_password: "temp-password", // Required by Mailgun API
+			});
+
+			const domainInfo = response as any;
+			
+			// Return DKIM tokens for DNS setup
+			const tokens: string[] = [];
+			if (domainInfo.dkim_selector) {
+				tokens.push(domainInfo.dkim_selector);
+			}
+
+			return tokens;
+		} catch (error: any) {
+			// If domain already exists, get its info
+			if (error.status === 400 && error.message?.includes("already exists")) {
+				try {
+					const response = await mgClient.domains.get(domain);
+					const domainInfo = response as any;
+					
+					const tokens: string[] = [];
+					if (domainInfo.dkim_selector) {
+						tokens.push(domainInfo.dkim_selector);
+					}
+					return tokens;
+				} catch (getError: any) {
+					signale.warn(`Failed to get existing domain info for ${domain}: ${getError.message}`);
+					return [];
+				}
+			}
+			signale.warn(`Failed to create domain for ${domain}: ${error.message}`);
+			throw error;
+		}
+	}
+
+	private async getIdentityVerificationAttributes(email: string) {
+		const domain = email.split("@")[1];
+
+		try {
+			const response = await mgClient.domains.get(domain);
+			const domainInfo = response as any;
+
+			// Map Mailgun status to SES-like status
+			let status = "Failed";
+			if (domainInfo.status === "active") {
+				status = "Success";
+			} else if (domainInfo.status === "unverified") {
+				status = "PendingVerification";
+			}
+
+			const tokens: string[] = [];
+			if (domainInfo.dkim_selector) {
+				tokens.push(domainInfo.dkim_selector);
+			}
+
+			return {
+				email: domain,
+				tokens,
+				status,
+			};
+		} catch (error: any) {
+			// Domain not found or other error
+			signale.warn(`Failed to get verification attributes for ${domain}: ${error.message}`);
+			return {
+				email: domain,
+				tokens: [],
+				status: "Failed",
+			};
+		}
 	}
 }
