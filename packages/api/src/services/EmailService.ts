@@ -27,7 +27,7 @@ export class EmailService {
       [key: string]: string;
     } | null;
   }) {
-    // Check if Mailgun is properly configured
+  
     if (!DOMAIN || !DEFAULT_FROM) {
       console.warn("Mailgun not configured, skipping email send");
       return { messageId: `mock-${Date.now()}` };
@@ -44,7 +44,7 @@ export class EmailService {
       "h:Precedence": "bulk",
     };
 
-    // Ensure text content is a string
+  
     const textContent = content.text || EmailService.stripHtml(content.html);
     if (textContent) {
       messageData.text = textContent;
@@ -70,7 +70,7 @@ export class EmailService {
       return { messageId: result.id };
     } catch (err: any) {
       console.error("Mailgun send error:", err);
-      // Return a mock message ID to prevent breaking the application
+      
       return { messageId: `error-${Date.now()}` };
     }
   }

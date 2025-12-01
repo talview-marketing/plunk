@@ -2,7 +2,7 @@ import Mailgun from "mailgun.js";
 import formData from "form-data";
 import { MAILGUN_API_KEY, MAILGUN_DOMAIN } from "../app/constants";
 
-// Create a mock client if Mailgun is not configured
+
 let mgClient: any;
 let DOMAIN: string | undefined;
 
