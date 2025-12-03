@@ -33,7 +33,7 @@ jobs:
       #     push: true
       #     tags: |
       #       driaug/plunk:${{ env.VERSION }}
-      #       driaug/plunk:latest
+      #       driaug/plunk:latest 
       #     platforms: linux/amd64,linux/arm64
   
         with:
