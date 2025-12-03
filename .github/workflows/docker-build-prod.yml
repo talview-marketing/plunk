@@ -1,23 +1,23 @@
-name: Build and Push Docker image (Production)
+# name: Build and Push Docker image (Production)
 
-on:
-  push:
-    branches:
-      - main
+# on:
+#   push:
+#     branches:
+#       - main
 
-jobs:
-  docker:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out the repo
-        uses: actions/checkout@v2
+# jobs:
+#   docker:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Check out the repo
+#         uses: actions/checkout@v2
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
+#       - name: Set up Docker Buildx
+#         uses: docker/setup-buildx-action@v1
 
-      - name: Get version from package.json
-        id: get_version
-        run: echo "VERSION=$(jq -r .version package.json)" >> $GITHUB_ENV
+#       - name: Get version from package.json
+#         id: get_version
+#         run: echo "VERSION=$(jq -r .version package.json)" >> $GITHUB_ENV
 
       # - name: Log in to Docker Hub
       #   uses: docker/login-action@v1
@@ -36,14 +36,61 @@ jobs:
       #       driaug/plunk:latest 
       #     platforms: linux/amd64,linux/arm64
   
+        # with:
+        #   build-arg: RELEASE_VERSION=${{ env.RELEASE_VERSION }}
+        #   username: ${{ github.actor }}
+        #   password: ${{ secrets.GITHUB_TOKEN }}
+        #   registry: ghcr.io
+        #   repository: /talview-marketing/plunk
+        #   tag_with_ref: true
+        #   tag_with_sha: true
+        #   path: .  
+        #   dockerfile: Dockerfile  
+        #   always_pull: true
+
+name: Build and Push Docker image (Production)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Get version from package.json
+        id: get_version
+        run: echo "VERSION=$(jq -r .version package.json)" >> $GITHUB_ENV
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          build-arg: RELEASE_VERSION=${{ env.RELEASE_VERSION }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-          registry: ghcr.io
-          repository: /talview-marketing/plunk
-          tag_with_ref: true
-          tag_with_sha: true
-          path: .  
-          dockerfile: Dockerfile  
-          always_pull: true
+
+      - name: Build and push image to GHCR
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ghcr.io/talview-marketing/plunk:${{ env.VERSION }}
+            ghcr.io/talview-marketing/plunk:latest
+          build-args: |
+            RELEASE_VERSION=${{ env.VERSION }}
+          platforms: linux/amd64,linux/arm64
+
