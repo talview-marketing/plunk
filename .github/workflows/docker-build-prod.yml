@@ -19,19 +19,31 @@ jobs:
         id: get_version
         run: echo "VERSION=$(jq -r .version package.json)" >> $GITHUB_ENV
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v1
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+      # - name: Log in to Docker Hub
+      #   uses: docker/login-action@v1
+      #   with:
+      #     username: ${{ secrets.DOCKER_USERNAME }}
+      #     password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and push
-        uses: docker/build-push-action@v2
+      # - name: Build and push
+      #   uses: docker/build-push-action@v2
+      #   with:
+      #     context: .
+      #     file: ./Dockerfile
+      #     push: true
+      #     tags: |
+      #       driaug/plunk:${{ env.VERSION }}
+      #       driaug/plunk:latest
+      #     platforms: linux/amd64,linux/arm64
+  
         with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: |
-            driaug/plunk:${{ env.VERSION }}
-            driaug/plunk:latest
-          platforms: linux/amd64,linux/arm64
+          build-arg: RELEASE_VERSION=${{ env.RELEASE_VERSION }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: ghcr.io
+          repository: /talview-marketing/plunk
+          tag_with_ref: true
+          tag_with_sha: true
+          path: .  
+          dockerfile: Dockerfile  
+          always_pull: true
