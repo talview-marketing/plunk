@@ -39,7 +39,7 @@ const server = new (class extends Server {
 		this.app.use(
 			compression({
 				threshold: 0,
-			}),
+			})as any,
 		);
 
 		// Parse the rest of our application as json

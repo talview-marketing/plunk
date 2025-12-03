@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import React, { type MutableRefObject, useEffect, useState } from "react";
 import { FixedSizeList as List } from "react-window";
+const VirtualList = List as unknown as React.ComponentType<any>;
 
 export interface MultiselectDropdownProps {
 	onChange: (value: string[]) => void;
@@ -158,9 +159,9 @@ export default function MultiselectDropdown({
 								{filteredValues.length === 0 ? (
 									<li className="relative cursor-default select-none py-2 pl-3 pr-9 text-neutral-800">No results found</li>
 								) : (
-									<List height={500} itemCount={filteredValues.length} itemSize={40} width={"100%"}>
+									<VirtualList height={500} itemCount={filteredValues.length} itemSize={40} width={"100%"}>
 										{Row}
-									</List>
+									</VirtualList>
 								)}
 							</motion.div>
 						)}

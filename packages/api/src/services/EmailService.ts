@@ -79,11 +79,19 @@ export class EmailService {
     content,
     project,
     isHtml,
+    footer,
+  contact,
   }: {
     content: string;
     project: {
       name: string;
     };
+     footer?: {
+    unsubscribe?: boolean;
+  };
+  contact?: {
+    id: string;
+  };
     isHtml?: boolean;
   }) {
     if (isHtml) {
