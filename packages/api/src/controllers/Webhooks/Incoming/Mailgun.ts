@@ -11,7 +11,8 @@ const eventMap: Record<string, EmailStatus> = {
   delivered: "DELIVERED",
   opened: "OPENED",
   complained: "COMPLAINT",
-  clicked: "DELIVERED", 
+  clicked: "DELIVERED",
+  unsubscribed: "COMPLAINT", 
 } as const;
 
 @Controller("mailgun")
@@ -21,7 +22,6 @@ export class MailgunWebhook {
     try {
       const body = req.body;
 
-      // Find the email by message-id
       const email = await prisma.email.findUnique({
         where: { messageId: body["message-id"] },
         include: {
@@ -31,27 +31,26 @@ export class MailgunWebhook {
         },
       });
 
-      if (!email) {
-        return res.status(200).json({});
-      }
+      if (!email) return res.status(200).json({});
 
       const project = await ProjectService.id(email.contact.projectId);
+      if (!project) return res.status(200).json({ success: false });
 
-      if (!project) {
-        return res.status(200).json({ success: false });
-      }
-
-     
+      
       switch (body.event) {
         case "clicked":
-          signale.success(`Click received for ${email.contact.email} from ${project.name}`);
+          signale.success(
+            `Click received for ${email.contact.email} from ${project.name}`
+          );
           await prisma.click.create({
             data: { emailId: email.id, link: body.url },
           });
           break;
 
         case "complained":
-          signale.warn(`Complaint received for ${email.contact.email} from ${project.name}`);
+          signale.warn(
+            `Complaint for ${email.contact.email} from ${project.name}`
+          );
           await prisma.contact.update({
             where: { id: email.contactId },
             data: { subscribed: false },
@@ -59,7 +58,19 @@ export class MailgunWebhook {
           break;
 
         case "bounced":
-          signale.warn(`Bounce received for ${email.contact.email} from ${project.name}`);
+          signale.warn(
+            `Bounce for ${email.contact.email} from ${project.name}`
+          );
+          await prisma.contact.update({
+            where: { id: email.contactId },
+            data: { subscribed: false },
+          });
+          break;
+
+        case "unsubscribed":
+          signale.warn(
+            `Unsubscribe for ${email.contact.email} from ${project.name}`
+          );
           await prisma.contact.update({
             where: { id: email.contactId },
             data: { subscribed: false },
@@ -67,22 +78,26 @@ export class MailgunWebhook {
           break;
       }
 
-   
+  
       await prisma.email.update({
         where: { messageId: body["message-id"] },
         data: {
-          status: eventMap[body.event] || "DELIVERED",
+          status: eventMap[body.event] ?? "DELIVERED",
         },
       });
 
-      
+   
       if (email.action) {
         let event: Event | undefined;
 
         if (body.event === "delivered") {
-          event = email.action.template.events.find((e) => e.name.includes("delivered"));
+          event = email.action.template.events.find((e) =>
+            e.name.includes("delivered")
+          );
         } else if (body.event === "opened") {
-          event = email.action.template.events.find((e) => e.name.includes("opened"));
+          event = email.action.template.events.find((e) =>
+            e.name.includes("opened")
+          );
         }
 
         if (event) {
@@ -95,9 +110,9 @@ export class MailgunWebhook {
       }
 
       return res.status(200).json({ success: true });
-    } catch (e) {
-      signale.error(e);
+    } catch (err) {
+      signale.error(err);
       return res.status(200).json({ success: false });
     }
   }
-} 
+}
