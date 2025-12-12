@@ -13,7 +13,7 @@ import signale from "signale";
 import { APP_URI, NODE_ENV } from "./app/constants";
 import { task } from "./app/cron";
 import { Auth } from "./controllers/Auth";
-import { Identities } from "./controllers/Identities";
+// import { Identities } from "./controllers/Identities";
 import { Memberships } from "./controllers/Memberships";
 import { Projects } from "./controllers/Projects";
 import { Tasks } from "./controllers/Tasks";
@@ -67,7 +67,7 @@ const server = new (class extends Server {
 			new Projects(),
 			new Memberships(),
 			new Webhooks(),
-			new Identities(),
+			// new Identities(),
 			new Tasks(),
 			new V1(),
 			new Health(),
