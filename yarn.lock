@@ -2349,10 +2349,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@next/env@npm:14.2.34":
-  version: 14.2.34
-  resolution: "@next/env@npm:14.2.34"
-  checksum: 10c0/ec12b7e0ddc455b2bc35305c0d431dde67e2b871d712cc49caaec960758aa41d5f98729a3e2d5da5e8e3e47967fa83a784b68178f156b02364296164a5787b5b
+"@next/env@npm:14.2.35":
+  version: 14.2.35
+  resolution: "@next/env@npm:14.2.35"
+  checksum: 10c0/e042f1771f91d4f69b296aa7f633df216464df5844e5e1ea46105b76b2e519093dff4b25df9a24576916811b65a7e896202b2540649af5aa54bd7f8b19d7b6ab
   languageName: node
   linkType: hard
 
@@ -3001,7 +3001,7 @@ __metadata:
     framer-motion: "npm:^11.3.7"
     jotai: "npm:2.9.0"
     lucide-react: "npm:^0.408.0"
-    next: "npm:14.2.34"
+    next: "npm:14.2.35"
     next-seo: "npm:^6.5.0"
     nprogress: "npm:^0.2.0"
     postcss: "npm:^8.4.39"
@@ -10303,11 +10303,11 @@ __metadata:
   languageName: node
   linkType: hard
 
-"next@npm:14.2.34":
-  version: 14.2.34
-  resolution: "next@npm:14.2.34"
+"next@npm:14.2.35":
+  version: 14.2.35
+  resolution: "next@npm:14.2.35"
   dependencies:
-    "@next/env": "npm:14.2.34"
+    "@next/env": "npm:14.2.35"
     "@next/swc-darwin-arm64": "npm:14.2.33"
     "@next/swc-darwin-x64": "npm:14.2.33"
     "@next/swc-linux-arm64-gnu": "npm:14.2.33"
@@ -10357,7 +10357,7 @@ __metadata:
       optional: true
   bin:
     next: dist/bin/next
-  checksum: 10c0/94a90168c9d3b1bc295d90bf8727843d30e3f0bb2e159221dfed4ccfc37507e3af9fb8288e77a5461d6d859459792f2b36d8fb5f39c0b992dbbceccb72325596
+  checksum: 10c0/5b1eadd554cd2cb1f030335d71a9363d16d86453f60a2331333887804c8b4b04a16fcb1ddb58229b792b6c365dbd0fafd9ccacd727c85134101a124bd6b4c06a
   languageName: node
   linkType: hard
 
