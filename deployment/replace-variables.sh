@@ -7,10 +7,10 @@ if [ -z "${API_URI}" ]; then
     exit 1
 fi
 
-if [ -z "${AWS_REGION}" ]; then
-    echo "AWS_REGION is not set. Exiting..."
-    exit 1
-fi
+# if [ -z "${AWS_REGION}" ]; then
+#     echo "AWS_REGION is not set. Exiting..."
+#     exit 1
+# fi
 
 # Process each directory that might contain JS files
 for dir in "/app/packages/dashboard/public" "/app/packages/dashboard/.next"; do
@@ -20,7 +20,7 @@ for dir in "/app/packages/dashboard/public" "/app/packages/dashboard/.next"; do
             if [ -f "$file" ]; then
                 # Replace environment variables
                 sed -i "s|PLUNK_API_URI|${API_URI}|g" "$file"
-                sed -i "s|PLUNK_AWS_REGION|${AWS_REGION}|g" "$file"
+                # sed -i "s|PLUNK_AWS_REGION|${AWS_REGION}|g" "$file"
                 echo "Processed: $file"
             fi
         done
