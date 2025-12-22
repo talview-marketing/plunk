@@ -47,10 +47,10 @@ const server = new (class extends Server {
 		this.app.use(cookies());
 		this.app.use(helmet());
 
-		this.app.use(["/v1", "/v1/track", "/v1/send"], (req, res, next) => {
-			res.set({ "Access-Control-Allow-Origin": "*" });
-			next();
-		});
+		// this.app.use(["/v1", "/v1/track", "/v1/send"], (req, res, next) => {
+		// 	res.set({ "Access-Control-Allow-Origin": "*" });
+		// 	next();
+		// });
 
 		this.app.use(
 			cors({
