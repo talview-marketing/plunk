@@ -182,6 +182,10 @@ export const ContactSchemas = {
 			.nullish(),
 		subscribed: z.boolean(),
 	}),
+	import: z.object({
+		csv: z.string().min(1, "CSV content can't be empty"),
+		filename: z.string().optional(),
+	}),
 	manage: z
 		.object({
 			id: id.optional(),

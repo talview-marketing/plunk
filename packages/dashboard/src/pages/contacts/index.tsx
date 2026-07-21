@@ -477,9 +477,9 @@ import { ContactSchemas } from "@plunk/shared";
 import type { Template } from "@prisma/client";
 import dayjs from "dayjs";
 import { AnimatePresence, motion } from "framer-motion";
-import { Edit2, Plus } from "lucide-react";
+import { Edit2, Plus, Upload } from "lucide-react";
 import Link from "next/link";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { type FieldError, useFieldArray, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -501,6 +501,15 @@ interface ContactValues {
 	subscribed: boolean;
 }
 
+interface ImportResult {
+	totalRows: number;
+	successCount: number;
+	createdCount: number;
+	updatedCount: number;
+	failureCount: number;
+	errors: { row: number; email: string; error: string }[];
+}
+
 /**
  *
  */
@@ -508,6 +517,14 @@ export default function Index() {
         const [page, setPage] = useState(1);
         const [query, setQuery] = useState<string>();
         const [statusFilter, setStatusFilter] = useState<string>("all");
+
+	const [importModal, setImportModal] = useState(false);
+	const [importFilename, setImportFilename] = useState<string>();
+	const [importCsv, setImportCsv] = useState<string>();
+	const [importColumns, setImportColumns] = useState<string[]>([]);
+	const [importRowCount, setImportRowCount] = useState(0);
+	const [importResult, setImportResult] = useState<ImportResult>();
+	const importInputRef = useRef<HTMLInputElement>(null);
 
 	const project = useActiveProject();
 	const { data: user } = useUser();
@@ -589,6 +606,64 @@ export default function Index() {
 		dataReset();
 
 		setContactModal(false);
+	};
+
+	const resetImport = () => {
+		setImportFilename(undefined);
+		setImportCsv(undefined);
+		setImportColumns([]);
+		setImportRowCount(0);
+		setImportResult(undefined);
+		if (importInputRef.current) {
+			importInputRef.current.value = "";
+		}
+	};
+
+	const onImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+		const file = e.target.files?.[0];
+		if (!file) {
+			return;
+		}
+
+		setImportResult(undefined);
+		setImportFilename(file.name);
+
+		const reader = new FileReader();
+		reader.onload = () => {
+			const text = (reader.result as string) ?? "";
+			setImportCsv(text);
+
+
+			const lines = text.split(/\r?\n/).filter((l) => l.trim() !== "");
+			const header = lines[0] ?? "";
+			setImportColumns(header.split(",").map((c) => c.trim()).filter(Boolean));
+			setImportRowCount(Math.max(lines.length - 1, 0));
+		};
+		reader.readAsText(file);
+	};
+
+	const runImport = () => {
+		if (!project || !importCsv) {
+			return;
+		}
+
+		toast.promise(
+			network.mock<ImportResult, typeof ContactSchemas.import>(project.secret, "POST", "/v1/contacts/import", {
+				csv: importCsv,
+				filename: importFilename,
+			}),
+			{
+				loading: "Importing contacts",
+				success: (res) => {
+					setImportResult(res);
+					void mutate();
+					return `Imported ${res.createdCount} new, updated ${res.updatedCount}${
+						res.failureCount > 0 ? `, ${res.failureCount} failed` : ""
+					}`;
+				},
+				error: "Could not import contacts!",
+			},
+		);
 	};
 
 	const renderContacts = () => {
@@ -753,6 +828,82 @@ export default function Index() {
 
 	return (
 		<>
+			<Modal
+				isOpen={importModal}
+				onToggle={() => setImportModal(!importModal)}
+				onAction={importResult ? () => setImportModal(false) : runImport}
+				type={"info"}
+				action={importResult ? "Done" : "Import"}
+				title={"Import contacts from CSV"}
+				description={
+					"Upload a CSV with an email column. Any other columns become contact metadata. Existing contacts are updated, not duplicated."
+				}
+			>
+				<div className={"my-4"}>
+					<input
+						ref={importInputRef}
+						type={"file"}
+						accept={".csv,text/csv"}
+						onChange={onImportFile}
+						className={
+							"block w-full text-sm text-neutral-700 file:mr-4 file:rounded file:border-0 file:bg-neutral-800 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-neutral-700"
+						}
+					/>
+
+					{importFilename && !importResult && (
+						<div className={"mt-4 rounded border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-700"}>
+							<p className={"font-medium"}>{importFilename}</p>
+							<p className={"mt-1 text-neutral-500"}>
+								{importRowCount} row{importRowCount === 1 ? "" : "s"} detected
+							</p>
+							{importColumns.length > 0 && (
+								<div className={"mt-2 flex flex-wrap gap-1"}>
+									{importColumns.map((c) => (
+										<span
+											key={c}
+											className={`rounded px-2 py-0.5 text-xs ${
+												c.toLowerCase() === "email"
+													? "bg-neutral-800 text-white"
+													: "bg-neutral-200 text-neutral-700"
+											}`}
+										>
+											{c}
+										</span>
+									))}
+								</div>
+							)}
+							{!importColumns.some((c) => c.toLowerCase() === "email") && (
+								<p className={"mt-2 text-xs text-red-500"}>No "email" column detected — the import will fail.</p>
+							)}
+						</div>
+					)}
+
+					{importResult && (
+						<div className={"mt-4 rounded border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-700"}>
+							<p className={"font-medium text-neutral-800"}>Import complete</p>
+							<ul className={"mt-2 space-y-0.5"}>
+								<li>{importResult.createdCount} created</li>
+								<li>{importResult.updatedCount} updated</li>
+								<li className={importResult.failureCount > 0 ? "text-red-500" : ""}>
+									{importResult.failureCount} failed
+								</li>
+							</ul>
+							{importResult.errors.length > 0 && (
+								<div className={"mt-3 border-t border-neutral-200 pt-2"}>
+									<p className={"text-xs font-medium text-neutral-600"}>First errors:</p>
+									<ul className={"mt-1 space-y-0.5 text-xs text-red-500"}>
+										{importResult.errors.slice(0, 10).map((err) => (
+											<li key={`${err.row}-${err.email}`}>
+												Row {err.row} ({err.email || "no email"}): {err.error}
+											</li>
+										))}
+									</ul>
+								</div>
+							)}
+						</div>
+					)}
+				</div>
+			</Modal>
 			<Modal
 				isOpen={contactModal}
 				onToggle={() => setContactModal(!contactModal)}
@@ -933,7 +1084,7 @@ export default function Index() {
 					title={"Contacts"}
 					description={"View and manage your contacts"}
 					actions={
-                                                <div className={"grid w-full gap-3 md:w-fit md:grid-cols-3"}>
+                                                <div className={"grid w-full grid-cols-1 gap-3 sm:grid-cols-2 md:w-fit lg:grid-cols-4"}>
                                                         <input
                                                                 onChange={(e) => setQuery(e.target.value)}
                                                                 autoComplete={"off"}
@@ -953,6 +1104,21 @@ export default function Index() {
                                                                 ]}
                                                                 selectedValue={statusFilter}
                                                         />
+
+                                                        <motion.button
+								onClick={() => {
+									resetImport();
+									setImportModal(true);
+								}}
+								whileHover={{ scale: 1.05 }}
+								whileTap={{ scale: 0.9 }}
+								className={
+									"flex items-center justify-center gap-x-1 rounded border border-neutral-300 bg-white px-8 py-2 text-center text-sm font-medium text-neutral-700 transition ease-in-out hover:bg-neutral-50"
+								}
+							>
+								<Upload strokeWidth={1.5} size={18} />
+								Import
+							</motion.button>
 
                                                         <motion.button
 								onClick={() => setContactModal(true)}
