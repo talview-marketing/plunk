@@ -1,265 +1,203 @@
-// import { Controller, Get, Middleware, Post } from "@overnightjs/core";
-// import { IdentitySchemas, UtilitySchemas } from "@plunk/shared";
-// import type { Request, Response } from "express";
-// import signale from "signale";
-// import { prisma } from "../database/prisma";
-// import { NotFound } from "../exceptions";
-// import { type IJwt, isAuthenticated } from "../middleware/auth";
-// import { ProjectService } from "../services/ProjectService";
-// import { Keys } from "../services/keys";
-// import { redis } from "../services/redis";
-// import { mgClient } from "../services/mailgun";
+import { Controller, Get, Middleware, Post } from "@overnightjs/core";
+import { IdentitySchemas, UtilitySchemas } from "@plunk/shared";
+import type { Request, Response } from "express";
+import signale from "signale";
+import { randomBytes } from "crypto";
+import { prisma } from "../database/prisma";
+import { NotAllowed, NotFound } from "../exceptions";
+import { type IJwt, isAuthenticated } from "../middleware/auth";
+import { MembershipService } from "../services/MembershipService";
+import { ProjectService } from "../services/ProjectService";
+import { Keys } from "../services/keys";
+import { redis } from "../services/redis";
+import { mgClient } from "../services/mailgun";
 
-// @Controller("identities")
-// export class Identities {
-// 	@Get("id/:id")
-// 	@Middleware([isAuthenticated])
-// 	public async getVerification(req: Request, res: Response) {
-// 		const { id } = UtilitySchemas.id.parse(req.params);
+@Controller("identities")
+export class Identities {
+	@Get("id/:id")
+	@Middleware([isAuthenticated])
+	public async getVerification(req: Request, res: Response) {
+		const { id } = UtilitySchemas.id.parse(req.params);
 
-// 		const project = await ProjectService.id(id);
+		const project = await ProjectService.id(id);
 
-// 		if (!project) {
-// 			throw new NotFound("project");
-// 		}
+		if (!project) {
+			throw new NotFound("project");
+		}
 
-// 		if (!project.email) {
-// 			return res.status(200).json({ success: false });
-// 		}
+		if (!project.email) {
+			return res.status(200).json({ success: false });
+		}
 
-// 		const attributes = await this.getIdentityVerificationAttributes(project.email);
+		const domain = project.email.split("@")[1];
+		const attributes = await this.getDomainStatus(domain);
 
-// 		if (attributes.status === "Success" && !project.verified) {
-// 			await prisma.project.update({ where: { id }, data: { verified: true } });
+		if (attributes.verified && !project.verified) {
+			await prisma.project.update({ where: { id }, data: { verified: true } });
 
-// 			await redis.del(Keys.Project.id(project.id));
-// 			await redis.del(Keys.Project.secret(project.secret));
-// 			await redis.del(Keys.Project.public(project.public));
-// 		}
+			await redis.del(Keys.Project.id(project.id));
+			await redis.del(Keys.Project.secret(project.secret));
+			await redis.del(Keys.Project.public(project.public));
+		}
 
-// 		return res.status(200).json({ tokens: attributes.tokens });
-// 	}
+		return res.status(200).json({ records: attributes.records });
+	}
 
-// 	@Middleware([isAuthenticated])
-// 	@Post("create")
-// 	public async addIdentity(req: Request, res: Response) {
-// 		const { id, email } = IdentitySchemas.create.parse(req.body);
+	@Middleware([isAuthenticated])
+	@Post("create")
+	public async addIdentity(req: Request, res: Response) {
+		const { id, email } = IdentitySchemas.create.parse(req.body);
 
-// 		const { userId } = res.locals.auth as IJwt;
+		const { userId } = res.locals.auth as IJwt;
 
-// 		const project = await ProjectService.id(id);
+		const project = await ProjectService.id(id);
 
-// 		if (!project) {
-// 			throw new NotFound("project");
-// 		}
+		if (!project) {
+			throw new NotFound("project");
+		}
 
-// 		const existingProject = await prisma.project.findFirst({
-// 			where: { email: { endsWith: email.split("@")[1] } },
-// 		});
+		const isAdmin = await MembershipService.isAdmin(id, userId);
 
-// 		if (existingProject) {
-// 			throw new Error("Domain already attached to another project");
-// 		}
+		if (!isAdmin) {
+			throw new NotAllowed();
+		}
 
-// 		const tokens = await this.verifyIdentity(email);
+		const domain = email.split("@")[1];
 
-// 		await prisma.project.update({
-// 			where: { id },
-// 			data: { email, verified: false },
-// 		});
+		const records = await this.registerDomain(domain);
 
-// 		await redis.del(Keys.User.projects(userId));
-// 		await redis.del(Keys.Project.id(project.id));
+		await prisma.project.update({
+			where: { id },
+			data: { email, verified: false },
+		});
 
-// 		return res.status(200).json({ success: true, tokens });
-// 	}
+		await redis.del(Keys.User.projects(userId));
+		await redis.del(Keys.Project.id(project.id));
 
-// 	@Middleware([isAuthenticated])
-// 	@Post("reset")
-// 	public async resetIdentity(req: Request, res: Response) {
-// 		const { id } = UtilitySchemas.id.parse(req.body);
+		return res.status(200).json({ success: true, records });
+	}
 
-// 		const { userId } = res.locals.auth as IJwt;
+	@Middleware([isAuthenticated])
+	@Post("reset")
+	public async resetIdentity(req: Request, res: Response) {
+		const { id } = UtilitySchemas.id.parse(req.body);
 
-// 		const project = await ProjectService.id(id);
+		const { userId } = res.locals.auth as IJwt;
 
-// 		if (!project) {
-// 			throw new NotFound("project");
-// 		}
+		const project = await ProjectService.id(id);
 
-// 		await prisma.project.update({
-// 			where: { id },
-// 			data: { email: null, verified: false },
-// 		});
+		if (!project) {
+			throw new NotFound("project");
+		}
 
-// 		await redis.del(Keys.User.projects(userId));
-// 		await redis.del(Keys.Project.id(project.id));
+		const isAdmin = await MembershipService.isAdmin(id, userId);
 
-// 		return res.status(200).json({ success: true });
-// 	}
+		if (!isAdmin) {
+			throw new NotAllowed();
+		}
 
-// 	@Post("update")
-// 	public async updateIdentities(req: Request, res: Response) {
-// 		const count = await prisma.project.count({
-// 			where: { email: { not: null } },
-// 		});
+		await prisma.project.update({
+			where: { id },
+			data: { email: null, verified: false },
+		});
 
-// 		for (let i = 0; i < count; i += 99) {
-// 			const dbIdentities = await prisma.project.findMany({
-// 				where: { email: { not: null } },
-// 				select: { id: true, email: true },
-// 				skip: i,
-// 				take: 99,
-// 			});
+		await redis.del(Keys.User.projects(userId));
+		await redis.del(Keys.Project.id(project.id));
 
-// 			const mailgunIdentities = await this.getIdentities(dbIdentities.map((i) => i.email as string));
+		return res.status(200).json({ success: true });
+	}
 
-// 			for (const identity of mailgunIdentities) {
-// 				const projectId = dbIdentities.find((i) => i.email?.endsWith(identity.email));
+	@Post("update")
+	public async updateIdentities(req: Request, res: Response) {
+		const count = await prisma.project.count({
+			where: { email: { not: null } },
+		});
 
-// 				const project = await ProjectService.id(projectId?.id as string);
+		for (let i = 0; i < count; i += 99) {
+			const dbIdentities = await prisma.project.findMany({
+				where: { email: { not: null } },
+				select: { id: true, email: true, verified: true },
+				skip: i,
+				take: 99,
+			});
 
-// 				if (identity.status === "Failed") {
-// 					signale.info(`Restarting verification for ${identity.email}`);
-// 					try {
-// 						void this.verifyIdentity(identity.email);
-// 					} catch (e) {
-// 						// Handle Mailgun rate limiting
-// 						if ((e as any).status === 429) {
-// 							signale.warn("Rate limiting detected, waiting 5 seconds");
-// 							await new Promise((r) => setTimeout(r, 5000));
-// 						}
-// 					}
-// 				}
+			for (const identity of dbIdentities) {
+				const domain = (identity.email as string).split("@")[1];
 
-// 				await prisma.project.update({
-// 					where: { id: projectId?.id as string },
-// 					data: { verified: identity.status === "Success" },
-// 				});
+				let verified = false;
+				try {
+					const attributes = await this.getDomainStatus(domain);
+					verified = attributes.verified;
+				} catch (e) {
+					signale.warn(`Failed to refresh verification status for ${domain}: ${(e as Error).message}`);
+					continue;
+				}
 
-// 				if (project && !project.verified && identity.status === "Success") {
-// 					signale.success(`Successfully verified ${identity.email}`);
+				if (verified === identity.verified) {
+					continue;
+				}
 
-// 					await redis.del(Keys.Project.id(project.id));
-// 					await redis.del(Keys.Project.secret(project.secret));
-// 					await redis.del(Keys.Project.public(project.public));
-// 				}
+				await prisma.project.update({
+					where: { id: identity.id },
+					data: { verified },
+				});
 
-// 				if (project?.verified && identity.status !== "Success") {
-// 					await redis.del(Keys.Project.id(project.id));
-// 					await redis.del(Keys.Project.secret(project.secret));
-// 					await redis.del(Keys.Project.public(project.public));
-// 				}
-// 			}
-// 		}
+				await redis.del(Keys.Project.id(identity.id));
 
-// 		return res.status(200).json({ success: true });
-// 	}
+				if (verified) {
+					signale.success(`Successfully verified ${domain}`);
+				}
+			}
+		}
 
-// 	// Mailgun helper methods
-// 	private async getIdentities(identities: string[]): Promise<{ email: string; status: string }[]> {
-// 		const domains = identities.map((identity) => identity.split("@")[1]);
-// 		const results: { email: string; status: string }[] = [];
+		return res.status(200).json({ success: true });
+	}
 
-// 		for (const domain of domains) {
-// 			try {
-// 				const response = await mgClient.domains.get(domain);
-// 				const domainInfo = response as any;
-				
-// 				// Map Mailgun status to SES-like status
-// 				let status = "Failed";
-// 				if (domainInfo.status === "active") {
-// 					status = "Success";
-// 				} else if (domainInfo.status === "unverified") {
-// 					status = "PendingVerification";
-// 				}
+	// Mailgun helper methods
 
-// 				results.push({ email: domain, status });
-// 			} catch (error: any) {
-// 				// Domain not found or other error, treat as failed
-// 				signale.warn(`Failed to get domain info for ${domain}: ${error.message}`);
-// 				results.push({ email: domain, status: "Failed" });
-// 			}
-// 		}
+	/**
+	 * Registers a domain with Mailgun and returns its sending DNS records
+	 */
+	private async registerDomain(domain: string) {
+		try {
+			const created = await mgClient.domains.create({
+				name: domain,
+				web_scheme: "https",
+				smtp_password: randomBytes(24).toString("hex"),
+			});
 
-// 		return results;
-// 	}
+			return created.sending_dns_records ?? [];
+		} catch (createError: any) {
+			// The domain may already exist in this Mailgun account (e.g. re-adding after a reset,
+			// or the account's domain quota is already used by this exact domain). Mailgun reports
+			// this in different ways (400 "already exists", or 403 "domain limit exceeded"), so
+			// rather than pattern-match the message, just check if the domain is actually there.
+			try {
+				const existing = await mgClient.domains.get(domain);
+				return existing.sending_dns_records ?? [];
+			} catch {
+				signale.warn(
+					`Failed to create domain ${domain}: status=${createError?.status} message=${createError?.message} details=${JSON.stringify(createError?.details)} body=${JSON.stringify(createError?.body)}`,
+				);
+				throw createError;
+			}
+		}
+	}
 
-// 	private async verifyIdentity(email: string): Promise<string[]> {
-// 		const domain = email.includes("@") ? email.split("@")[1] : email;
+	/**
+	 * Fetches the current verification state + sending DNS records for a domain from Mailgun
+	 */
+	private async getDomainStatus(domain: string): Promise<{ verified: boolean; records: unknown[] }> {
+		try {
+			const info = await mgClient.domains.get(domain);
 
-// 		try {
-// 			// Add domain to Mailgun
-// 			const response = await mgClient.domains.create({
-// 				name: domain,
-// 				web_scheme: "https",
-// 				smtp_password: "temp-password", // Required by Mailgun API
-// 			});
-
-// 			const domainInfo = response as any;
-			
-// 			// Return DKIM tokens for DNS setup
-// 			const tokens: string[] = [];
-// 			if (domainInfo.dkim_selector) {
-// 				tokens.push(domainInfo.dkim_selector);
-// 			}
-
-// 			return tokens;
-// 		} catch (error: any) {
-// 			// If domain already exists, get its info
-// 			if (error.status === 400 && error.message?.includes("already exists")) {
-// 				try {
-// 					const response = await mgClient.domains.get(domain);
-// 					const domainInfo = response as any;
-					
-// 					const tokens: string[] = [];
-// 					if (domainInfo.dkim_selector) {
-// 						tokens.push(domainInfo.dkim_selector);
-// 					}
-// 					return tokens;
-// 				} catch (getError: any) {
-// 					signale.warn(`Failed to get existing domain info for ${domain}: ${getError.message}`);
-// 					return [];
-// 				}
-// 			}
-// 			signale.warn(`Failed to create domain for ${domain}: ${error.message}`);
-// 			throw error;
-// 		}
-// 	}
-
-// 	private async getIdentityVerificationAttributes(email: string) {
-// 		const domain = email.split("@")[1];
-
-// 		try {
-// 			const response = await mgClient.domains.get(domain);
-// 			const domainInfo = response as any;
-
-// 			// Map Mailgun status to SES-like status
-// 			let status = "Failed";
-// 			if (domainInfo.status === "active") {
-// 				status = "Success";
-// 			} else if (domainInfo.status === "unverified") {
-// 				status = "PendingVerification";
-// 			}
-
-// 			const tokens: string[] = [];
-// 			if (domainInfo.dkim_selector) {
-// 				tokens.push(domainInfo.dkim_selector);
-// 			}
-
-// 			return {
-// 				email: domain,
-// 				tokens,
-// 				status,
-// 			};
-// 		} catch (error: any) {
-// 			// Domain not found or other error
-// 			signale.warn(`Failed to get verification attributes for ${domain}: ${error.message}`);
-// 			return {
-// 				email: domain,
-// 				tokens: [],
-// 				status: "Failed",
-// 			};
-// 		}
-// 	}
-// }
+			return {
+				verified: info.state === "active",
+				records: info.sending_dns_records ?? [],
+			};
+		} catch (error: any) {
+			signale.warn(`Failed to get domain info for ${domain}: ${error.message}`);
+			return { verified: false, records: [] };
+		}
+	}
+}

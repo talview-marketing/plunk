@@ -108,7 +108,7 @@ export class Campaigns {
 			await EmailService.send({
 				from: {
 					name: project.from ?? project.name,
-					email: project.verified && project.email ? project.email : "no-reply@useplunk.dev",
+					email: project.verified && project.email ? project.email : "",
 				},
 				to: members.map((m) => m.email),
 				content: {

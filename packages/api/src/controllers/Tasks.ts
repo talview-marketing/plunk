@@ -61,7 +61,7 @@ export class Tasks {
 					}
 				}
 
-				email = project.verified && project.email ? template.email ?? project.email : "no-reply@useplunk.dev";
+				email = project.verified && project.email ? template.email ?? project.email : "";
 				name = template.from ?? project.from ?? project.name;
 
 				({ subject, body } = EmailService.format({
@@ -74,7 +74,7 @@ export class Tasks {
 					},
 				}));
 			} else if (campaign) {
-				email = project.verified && project.email ? campaign.email ?? project.email : "no-reply@useplunk.dev";
+				email = project.verified && project.email ? campaign.email ?? project.email : "";
 				name = campaign.from ?? project.from ?? project.name;
 
 				({ subject, body } = EmailService.format({

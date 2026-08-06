@@ -33,8 +33,11 @@ export class EmailService {
       return { messageId: `mock-${Date.now()}` };
     }
 
+    const senderEmail = from.email || DEFAULT_FROM;
+    const senderDomain = senderEmail.split("@")[1] || DOMAIN;
+
     const messageData: Record<string, any> = {
-      from: DEFAULT_FROM,
+      from: from.name ? `${from.name} <${senderEmail}>` : senderEmail,
       to: to.join(", "),
       subject: content.subject,
       html: content.html,
@@ -63,7 +66,7 @@ export class EmailService {
     }
 
     try {
-      const result = await mgClient.messages.create(DOMAIN, messageData as any);
+      const result = await mgClient.messages.create(senderDomain, messageData as any);
       if (!result.id) {
         throw new Error("Mailgun did not return a message ID");
       }

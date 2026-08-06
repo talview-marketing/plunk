@@ -60,7 +60,11 @@ export default function Index() {
             network.fetch<
                 {
                     success: true;
-                    tokens: string[];
+                    records: {
+                        record_type: string;
+                        name: string;
+                        value: string;
+                    }[];
                 },
                 typeof IdentitySchemas.create
             >("POST", "/identities/create", {
@@ -70,7 +74,7 @@ export default function Index() {
             {
                 loading: "Adding your domain",
                 success: (res) => {
-                    void identityMutate({ tokens: res.tokens }, { revalidate: false });
+                    void identityMutate({ records: res.records }, { revalidate: false });
                     void projectsMutate();
 
                     return "Added your domain";
@@ -164,99 +168,18 @@ export default function Index() {
                             <div className="mt-6">
                                 <Table
                                     values={[
-                                        {
-                                            Type: <Badge type={"info"}>TXT</Badge>,
-                                            Key: (
-                                                <div
-                                                    className={"flex cursor-pointer items-center gap-3"}
-                                                    onClick={() => {
-                                                        void navigator.clipboard.writeText("@");
-                                                        toast.success("Copied key to clipboard");
-                                                    }}
-                                                >
-                                                    <p className={"font-mono text-sm"}>@</p>
-                                                    <Copy size={14} />
-                                                </div>
-                                            ),
-                                            Value: (
-                                                <div
-                                                    className={"flex cursor-pointer items-center gap-3"}
-                                                    onClick={() => {
-                                                        void navigator.clipboard.writeText("v=spf1 include:mailgun.org ~all");
-                                                        toast.success("Copied value to clipboard");
-                                                    }}
-                                                >
-                                                    <p className={"font-mono text-sm"}>v=spf1 include:mailgun.org ~all</p>
-                                                    <Copy size={14} />
-                                                </div>
-                                            ),
-                                        },
-                                        {
-                                            type: <Badge type={"info"}>MX</Badge>,
-                                            Key: (
-                                                <div
-                                                    className={"flex cursor-pointer items-center gap-3"}
-                                                    onClick={() => {
-                                                        void navigator.clipboard.writeText("@");
-                                                        toast.success("Copied key to clipboard");
-                                                    }}
-                                                >
-                                                    <p className={"font-mono text-sm"}>@</p>
-                                                    <Copy size={14} />
-                                                </div>
-                                            ),
-                                            Value: (
-                                                <div
-                                                    className={"flex cursor-pointer items-center gap-3"}
-                                                    onClick={() => {
-                                                        void navigator.clipboard.writeText("10 mxa.mailgun.org");
-                                                        toast.success("Copied value to clipboard");
-                                                    }}
-                                                >
-                                                    <p className={"font-mono text-sm"}>10 mxa.mailgun.org</p>
-                                                    <Copy size={14} />
-                                                </div>
-                                            ),
-                                        },
-                                        {
-                                            type: <Badge type={"info"}>MX</Badge>,
-                                            Key: (
-                                                <div
-                                                    className={"flex cursor-pointer items-center gap-3"}
-                                                    onClick={() => {
-                                                        void navigator.clipboard.writeText("@");
-                                                        toast.success("Copied key to clipboard");
-                                                    }}
-                                                >
-                                                    <p className={"font-mono text-sm"}>@</p>
-                                                    <Copy size={14} />
-                                                </div>
-                                            ),
-                                            Value: (
-                                                <div
-                                                    className={"flex cursor-pointer items-center gap-3"}
-                                                    onClick={() => {
-                                                        void navigator.clipboard.writeText("10 mxb.mailgun.org");
-                                                        toast.success("Copied value to clipboard");
-                                                    }}
-                                                >
-                                                    <p className={"font-mono text-sm"}>10 mxb.mailgun.org</p>
-                                                    <Copy size={14} />
-                                                </div>
-                                            ),
-                                        },
-                                        ...identity.tokens.map((token) => {
+                                        ...identity.records.map((record) => {
                                             return {
-                                                Type: <Badge type={"info"}>CNAME</Badge>,
+                                                Type: <Badge type={"info"}>{record.record_type}</Badge>,
                                                 Key: (
                                                     <div
                                                         className={"flex cursor-pointer items-center gap-3"}
                                                         onClick={() => {
-                                                            void navigator.clipboard.writeText(`${token}._domainkey`);
+                                                            void navigator.clipboard.writeText(record.name);
                                                             toast.success("Copied key to clipboard");
                                                         }}
                                                     >
-                                                        <p className={"font-mono text-sm"}>{token}._domainkey</p>
+                                                        <p className={"font-mono text-sm"}>{record.name}</p>
                                                         <Copy size={14} />
                                                     </div>
                                                 ),
@@ -264,11 +187,11 @@ export default function Index() {
                                                     <div
                                                         className={"flex cursor-pointer items-center gap-3"}
                                                         onClick={() => {
-                                                            void navigator.clipboard.writeText(`${token}.dkim.mailgun.org`);
+                                                            void navigator.clipboard.writeText(record.value);
                                                             toast.success("Copied value to clipboard");
                                                         }}
                                                     >
-                                                        <p className={"font-mono text-sm"}>{token}.dkim.mailgun.org</p>
+                                                        <p className={"font-mono text-sm"}>{record.value}</p>
                                                         <Copy size={14} />
                                                     </div>
                                                 ),

@@ -6,7 +6,7 @@ import dayjs from "dayjs";
 import { AnimatePresence, motion } from "framer-motion";
 import { Search, Users2, XIcon } from "lucide-react";
 import { useRouter } from "next/router";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { type FieldError, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { Alert, Card, Dropdown, Editor, FullscreenLoader, Input, MultiselectDropdown } from "../../components";
@@ -60,8 +60,6 @@ export default function Index() {
 		formState: { errors },
 		setValue,
 		watch,
-		setError,
-		clearErrors,
 	} = useForm<CampaignValues>({
 		resolver: zodResolver(CampaignSchemas.create),
 		defaultValues: {
@@ -71,20 +69,14 @@ export default function Index() {
 		},
 	});
 
-	useEffect(() => {
-		watch((value, { name, type }) => {
-			if (name === "email") {
-				if (value.email && project?.email && !value.email.endsWith(project.email.split("@")[1])) {
-					setError("email", {
-						type: "manual",
-						message: `The sender address must end with @${project.email?.split("@")[1]}`,
-					});
-				} else {
-					clearErrors("email");
+	const senderEmailValue = watch("email");
+	const senderEmailDomainError: FieldError | undefined =
+		senderEmailValue && project?.email && !senderEmailValue.endsWith(project.email.split("@")[1])
+			? {
+					type: "manual",
+					message: `The sender address must end with @${project.email.split("@")[1]}`,
 				}
-			}
-		});
-	}, [watch, project, setError, clearErrors]);
+			: undefined;
 
 	if (!project || !events) {
 		return <FullscreenLoader />;
@@ -228,7 +220,7 @@ export default function Index() {
 									label={"Sender Email"}
 									placeholder={`${project.email}`}
 									register={register("email")}
-									error={errors.email}
+									error={errors.email ?? senderEmailDomainError}
 								/>
 							)}
 

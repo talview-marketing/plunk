@@ -1,5 +1,6 @@
 import {Action, Contact, Email, Event, Project, Role} from '@prisma/client';
 import {useAtom} from 'jotai';
+import {useEffect} from 'react';
 import useSWR from 'swr';
 import {atomActiveProject} from '../atoms/project';
 
@@ -17,18 +18,25 @@ export function useActiveProject(): Project | null {
   const [activeProject, setActiveProject] = useAtom(atomActiveProject);
   const {data: projects} = useProjects();
 
+  useEffect(() => {
+    if (!projects) {
+      return;
+    }
+
+    if (activeProject && !projects.find(project => project.id === activeProject)) {
+      setActiveProject(null);
+      window.localStorage.removeItem('project');
+      return;
+    }
+
+    if (!activeProject && projects.length > 0) {
+      setActiveProject(projects[0].id);
+      window.localStorage.setItem('project', projects[0].id);
+    }
+  }, [projects, activeProject, setActiveProject]);
+
   if (!projects) {
     return null;
-  }
-
-  if (activeProject && !projects.find(project => project.id === activeProject)) {
-    setActiveProject(null);
-    window.localStorage.removeItem('project');
-  }
-
-  if (!activeProject && projects.length > 0) {
-    setActiveProject(projects[0].id);
-    window.localStorage.setItem('project', projects[0].id);
   }
 
   return projects.find(project => project.id === activeProject) ?? null;
@@ -77,6 +85,10 @@ export function useActiveProjectVerifiedIdentity() {
   const activeProject = useActiveProject();
 
   return useSWR<{
-    tokens: string[];
+    records: {
+      record_type: string;
+      name: string;
+      value: string;
+    }[];
   }>(activeProject ? `/identities/id/${activeProject.id}` : null);
 }

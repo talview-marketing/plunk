@@ -90,6 +90,7 @@ jobs:
           tags: |
             ghcr.io/talview-marketing/plunk:${{ env.VERSION }}
             ghcr.io/talview-marketing/plunk:latest
+            ghcr.io/talview-marketing/plunk:${{ github.sha }}
           build-args: |
             RELEASE_VERSION=${{ env.VERSION }}
           platforms: linux/amd64,linux/arm64
