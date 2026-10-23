@@ -1,4 +1,7 @@
+import type { CampaignSchemas } from "@plunk/shared";
+import type { Prisma } from "@prisma/client";
 import dayjs from "dayjs";
+import type z from "zod";
 import { prisma } from "../database/prisma";
 import { Keys } from "./keys";
 import { wrapRedis } from "./redis";
@@ -43,6 +46,66 @@ export class ProjectService {
 			return wrapRedis(Keys.Project.contacts(id, { count: true }), async () => {
 				return prisma.contact.count({ where: { projectId: id } });
 			});
+		},
+
+		// Just what the campaign recipient picker shows, so opening a campaign no longer loads every contact with all its triggers
+		recipients: (id: string) => {
+			return prisma.contact.findMany({
+				where: { projectId: id, subscribed: true },
+				select: { id: true, email: true },
+				orderBy: { createdAt: "desc" },
+			});
+		},
+
+		// Runs the campaign advanced selector in the database instead of in the browser
+		audience: async (id: string, query: z.infer<typeof CampaignSchemas.audience>) => {
+			const since = (period: "day" | "week" | "month") => ({ gte: dayjs().subtract(1, period).toDate() });
+
+			const conditions: Prisma.ContactWhereInput[] = [];
+
+			for (const eventId of query.events ?? []) {
+				conditions.push({ triggers: { some: { eventId, ...(query.last && { createdAt: since(query.last) }) } } });
+			}
+
+			if (query.notevents && query.notevents.length > 0) {
+				for (const eventId of query.notevents) {
+					conditions.push({ triggers: { none: { eventId, ...(query.notlast && { createdAt: since(query.notlast) }) } } });
+				}
+			} else if (query.notlast) {
+				conditions.push({ triggers: { none: { createdAt: since(query.notlast) } } });
+			}
+
+			if (query.data) {
+				// Narrows down in SQL to contacts whose data mentions the key; the exact match happens below
+				conditions.push({ data: { contains: JSON.stringify(query.data) } });
+			}
+
+			const contacts = await prisma.contact.findMany({
+				where: { projectId: id, subscribed: true, AND: conditions },
+				select: { id: true, data: !!query.data },
+			});
+
+			if (!query.data) {
+				return contacts.map((c) => c.id);
+			}
+
+			const key = query.data;
+
+			return contacts
+				.filter((c) => {
+					const value = c.data ? JSON.parse(c.data)[key] : undefined;
+
+					if (!value) {
+						return false;
+					}
+
+					if (!query.value) {
+						return true;
+					}
+
+					return Array.isArray(value) ? value.includes(query.value) : value === query.value;
+				})
+				.map((c) => c.id);
 		},
 	};
 
@@ -141,9 +204,29 @@ export class ProjectService {
 		});
 	}
 
+	public static async metadataValues(id: string, key: string) {
+		const contacts = await prisma.contact.findMany({
+			where: { projectId: id, data: { contains: JSON.stringify(key) } },
+			distinct: ["data"],
+			select: { data: true },
+		});
+
+		return [
+			...new Set(
+				contacts
+					.flatMap((c) => JSON.parse(c.data as string)[key] ?? [])
+					.filter((v: unknown): v is string => typeof v === "string" && v !== ""),
+			),
+		];
+	}
+
 	public static async feed(id: string, page: number) {
 		const itemsPerPage = 10;
 		const skip = (page - 1) * itemsPerPage;
+
+		// The newest skip + itemsPerPage rows of each source are enough to build this page of the
+		// merged feed, so the rest of the project's history is never loaded
+		const take = skip + itemsPerPage;
 
 		const triggers = await prisma.trigger.findMany({
 			where: { contact: { projectId: id } },
@@ -161,11 +244,22 @@ export class ProjectService {
 				},
 			},
 			orderBy: { createdAt: "desc" },
+			take,
 		});
 
+		// Leaves out subject and body: bodies are full HTML documents and the feed never shows them
 		const emails = await prisma.email.findMany({
 			where: { contact: { projectId: id } },
-			include: {
+			select: {
+				id: true,
+				messageId: true,
+				status: true,
+				projectId: true,
+				actionId: true,
+				campaignId: true,
+				contactId: true,
+				createdAt: true,
+				updatedAt: true,
 				contact: {
 					select: {
 						id: true,
@@ -174,6 +268,7 @@ export class ProjectService {
 				},
 			},
 			orderBy: { createdAt: "desc" },
+			take,
 		});
 
 		const combined = [...triggers, ...emails];
@@ -264,14 +359,31 @@ export class ProjectService {
 
 	public static campaigns(id: string) {
 		return wrapRedis(Keys.Project.campaigns(id), async () => {
-			return prisma.project.findUnique({ where: { id } }).campaigns({
+			// Counts only: loading every recipient, email and task of every campaign timed out on large projects
+			const campaigns = await prisma.campaign.findMany({
+				where: { projectId: id },
 				include: {
-					recipients: { select: { id: true } },
-					emails: { select: { id: true, status: true } },
-					tasks: { select: { id: true } },
+					_count: {
+						select: {
+							recipients: true,
+							emails: true,
+							tasks: true,
+						},
+					},
 				},
 				orderBy: { createdAt: "desc" },
 			});
+
+			const opened = await prisma.email.groupBy({
+				by: ["campaignId"],
+				where: { campaignId: { in: campaigns.map((c) => c.id) }, status: "OPENED" },
+				_count: { _all: true },
+			});
+
+			return campaigns.map((c) => ({
+				...c,
+				_count: { ...c._count, opened: opened.find((o) => o.campaignId === c.id)?._count._all ?? 0 },
+			}));
 		});
 	}
 

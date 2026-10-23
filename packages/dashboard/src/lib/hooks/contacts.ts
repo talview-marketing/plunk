@@ -47,6 +47,13 @@ export function useContact<T extends WithProject | WithoutProject>({id, withProj
  *
  * @param page
  */
+// The server keeps running a request after the gateway gives up on it, so automatic retries of a slow
+// query stack up copies of it on the database and make every following attempt slower
+const heavyRequest = {
+  revalidateOnFocus: false,
+  shouldRetryOnError: false,
+};
+
 export function useContacts(page: number) {
   const activeProject = useActiveProject();
 
@@ -55,7 +62,34 @@ export function useContacts(page: number) {
       triggers: Trigger[];
     })[];
     count: number;
-  }>(activeProject ? `/projects/id/${activeProject.id}/contacts?page=${page}` : null);
+  }>(activeProject ? `/projects/id/${activeProject.id}/contacts?page=${page}` : null, heavyRequest);
+}
+
+/**
+ * Subscribed contacts as id and email only, for the campaign recipient picker
+ */
+export function useRecipientOptions() {
+  const activeProject = useActiveProject();
+
+  return useSWR<{id: string; email: string}[]>(
+    activeProject ? `/projects/id/${activeProject.id}/contacts/recipients` : null,
+    heavyRequest,
+  );
+}
+
+/**
+ * Distinct values of one contact metadata key, for the campaign advanced selector
+ * @param key
+ */
+export function useContactMetadataValues(key: string | undefined) {
+  const activeProject = useActiveProject();
+
+  return useSWR<string[]>(
+    activeProject && key
+      ? `/projects/id/${activeProject.id}/contacts/metadata/values?key=${encodeURIComponent(key)}`
+      : null,
+    heavyRequest,
+  );
 }
 
 /**

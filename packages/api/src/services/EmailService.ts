@@ -1,5 +1,6 @@
 import mjml2html from "mjml";
-import { APP_URI } from "../app/constants";
+import signale from "signale";
+import { APP_URI, NODE_ENV } from "../app/constants";
 import { mgClient, DOMAIN } from "../services/mailgun";
 
 const DEFAULT_FROM = process.env.MAILGUN_FROM_ADDRESS;
@@ -29,8 +30,14 @@ export class EmailService {
   }) {
   
     if (!DOMAIN || !DEFAULT_FROM) {
-      console.warn("Mailgun not configured, skipping email send");
-      return { messageId: `mock-${Date.now()}` };
+      // Locally it is useful to run without Mailgun credentials. In production a
+      // missing config means every email silently disappears, so fail loudly.
+      if (NODE_ENV === "development") {
+        signale.warn("Mailgun not configured, skipping email send");
+        return { messageId: `mock-${Date.now()}` };
+      }
+
+      throw new Error("Mailgun is not configured: MAILGUN_DOMAIN and MAILGUN_FROM_ADDRESS are required");
     }
 
     const senderEmail = from.email || DEFAULT_FROM;
@@ -72,9 +79,15 @@ export class EmailService {
       }
       return { messageId: result.id };
     } catch (err: any) {
-      console.error("Mailgun send error:", err);
-      
-      return { messageId: `error-${Date.now()}` };
+      // Never swallow this. Returning a fake message id makes a failed send look
+      // like a delivered one, both in the logs and in the campaign counts.
+      signale.error(
+        `Mailgun send failed for ${to.join(", ")} via domain "${senderDomain}": ${err?.status ?? ""} ${
+          err?.details ?? err?.message ?? err
+        }`,
+      );
+
+      throw err;
     }
   }
 

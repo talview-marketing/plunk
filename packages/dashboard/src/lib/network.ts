@@ -11,6 +11,12 @@ interface TypedSchema extends ZodSchema {
   _type: any;
 }
 
+export class NetworkError extends Error {
+  public constructor(message: string, public status: number) {
+    super(message);
+  }
+}
+
 export class network {
   /**
    * Fetcher function that includes toast support
@@ -31,11 +37,12 @@ export class network {
       credentials: 'include',
     });
 
-    const res = await response.json();
+    // A gateway timeout comes back as an HTML page, not JSON
+    const res = await response.json().catch(() => null);
 
     if (response.status >= 400) {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      throw new Error(res?.message ?? 'Something went wrong!');
+      throw new NetworkError(res?.message ?? 'Something went wrong!', response.status);
     }
 
     return res;

@@ -24,7 +24,7 @@ import {
 } from "../../components";
 import { Dashboard } from "../../layouts";
 import { useCampaign, useCampaigns } from "../../lib/hooks/campaigns";
-import { useContacts } from "../../lib/hooks/contacts";
+import { useContactMetadata, useContactMetadataValues, useRecipientOptions } from "../../lib/hooks/contacts";
 import { useEventsWithoutTriggers } from "../../lib/hooks/events";
 import { useActiveProject } from "../../lib/hooks/projects";
 import { network } from "../../lib/network";
@@ -51,7 +51,8 @@ export default function Index() {
 	const project = useActiveProject();
 	const { mutate: campaignsMutate } = useCampaigns();
 	const { data: campaign, mutate: campaignMutate } = useCampaign(router.query.id as string);
-	const { data: contacts } = useContacts(0);
+	const { data: contacts } = useRecipientOptions();
+	const { data: metadataKeys } = useContactMetadata();
 	const { data: events } = useEventsWithoutTriggers();
 
 	const [query, setQuery] = useState<{
@@ -62,6 +63,8 @@ export default function Index() {
 		notevents?: string[];
 		notlast?: "day" | "week" | "month";
 	}>({});
+	const { data: metadataValues } = useContactMetadataValues(query.data);
+	const [selecting, setSelecting] = useState(false);
 	const [confirmModal, setConfirmModal] = useState(false);
 	const [advancedSelector, setSelector] = useState(false);
 	const [delay, setDelay] = useState(0);
@@ -110,97 +113,23 @@ export default function Index() {
 		return <FullscreenLoader />;
 	}
 
-	const selectQuery = () => {
-		if (!contacts) {
-			return;
+	const selectQuery = async () => {
+		setSelecting(true);
+
+		try {
+			const ids = await network.fetch<string[], typeof CampaignSchemas.audience>(
+				"POST",
+				`/projects/id/${project.id}/contacts/audience`,
+				query,
+			);
+
+			setValue("recipients", ids);
+			toast.success(`Selected ${ids.length} contacts`);
+		} catch {
+			toast.error("Could not select contacts");
+		} finally {
+			setSelecting(false);
 		}
-
-		let filteredContacts = contacts.contacts;
-
-		if (query.events && query.events.length > 0) {
-			query.events.map((e) => {
-				filteredContacts = filteredContacts.filter((c) => c.triggers.some((t) => t.eventId === e));
-			});
-		}
-
-		if (query.last) {
-			filteredContacts = filteredContacts.filter((c) => {
-				if (c.triggers.length === 0) {
-					return false;
-				}
-
-				const lastTrigger = c.triggers.sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
-
-				if (lastTrigger.length === 0) {
-					return false;
-				}
-
-				return dayjs(lastTrigger[0].createdAt).isAfter(dayjs().subtract(1, query.last));
-			});
-		}
-
-		if (query.notevents && query.notevents.length > 0 && query.notlast) {
-			query.notevents.map((e) => {
-				filteredContacts = filteredContacts.filter((c) => {
-					if (c.triggers.length === 0) {
-						return true;
-					}
-
-					const lastTrigger = c.triggers.filter((t) => t.eventId === e).sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
-
-					if (lastTrigger.length === 0) {
-						return true;
-					}
-
-					return dayjs(lastTrigger[0].createdAt).isAfter(dayjs().subtract(1, query.last));
-				});
-			});
-		} else if (query.notevents && query.notevents.length > 0) {
-			query.notevents.map((e) => {
-				filteredContacts = filteredContacts.filter((c) => c.triggers.every((t) => t.eventId !== e));
-			});
-		} else if (query.notlast) {
-			filteredContacts = filteredContacts.filter((c) => {
-				if (c.triggers.length === 0) {
-					return true;
-				}
-
-				const lastTrigger = c.triggers.sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
-
-				if (lastTrigger.length === 0) {
-					return true;
-				}
-
-				return !dayjs(lastTrigger[0].createdAt).isAfter(dayjs().subtract(1, query.notlast));
-			});
-		}
-
-		if (query.data) {
-			filteredContacts = filteredContacts.filter((c) => {
-				if (!c.data) {
-					return false;
-				}
-
-				return JSON.parse(c.data)[query.data as string];
-			});
-		}
-
-		if (query.data && query.value) {
-			filteredContacts = filteredContacts.filter((c) => {
-				if (!c.data) {
-					return false;
-				}
-
-				return Array.isArray(JSON.parse(c.data)[query.data as string])
-					? JSON.parse(c.data)[query.data as string].includes(query.value)
-					: JSON.parse(c.data)[query.data as string] === query.value;
-			});
-		}
-
-		setValue(
-			"recipients",
-			filteredContacts.map((c) => c.id),
-		);
 	};
 
 	const send = async (data: CampaignValues) => {
@@ -213,7 +142,7 @@ export default function Index() {
 			"PUT",
 			"/v1/campaigns",
 
-			data.recipients.length === contacts?.contacts.filter((c) => c.subscribed).length
+			data.recipients.length === contacts?.length
 				? { id: campaign.id, ...data, recipients: ["all"] }
 				: {
 						id: campaign.id,
@@ -462,11 +391,9 @@ export default function Index() {
 									<MultiselectDropdown
 										disabled={campaign.status !== "DRAFT"}
 										onChange={(c) => setValue("recipients", c)}
-										values={contacts.contacts
-											.filter((c) => c.subscribed)
-											.map((c) => {
-												return { name: c.email, value: c.id };
-											})}
+										values={contacts.map((c) => {
+											return { name: c.email, value: c.id };
+										})}
 										selectedValues={watch("recipients")}
 									/>
 									<AnimatePresence>
@@ -496,7 +423,7 @@ export default function Index() {
 
 													setValue(
 														"recipients",
-														contacts.contacts.filter((c) => c.subscribed).map((c) => c.id),
+														contacts.map((c) => c.id),
 													);
 												}}
 												className={
@@ -688,14 +615,7 @@ export default function Index() {
 													}
 													values={[
 														{ name: "Any parameter", value: "" },
-														...new Set(
-															contacts.contacts
-																.filter((c) => c.data)
-																.map((c) => {
-																	return Object.keys(JSON.parse(c.data ?? "{}"));
-																})
-																.reduce((acc, val) => acc.concat(val), []),
-														),
+														...(metadataKeys ?? []),
 													].map((k) => (typeof k === "string" ? { name: k, value: k } : k))}
 													selectedValue={query.data ?? ""}
 												/>
@@ -717,25 +637,8 @@ export default function Index() {
 															}
 															values={[
 																{ name: "Any value", value: "" },
-																...new Set(
-																	contacts.contacts
-																		.filter((c) => c.data && JSON.parse(c.data)[query.data ?? ""])
-																		.map((c) => {
-																			return JSON.parse(c.data ?? "{}")[query.data ?? ""];
-																		})
-																		.reduce((acc, val) => acc.concat(val), []),
-																),
-															].map((k) =>
-																typeof k === "string"
-																	? {
-																			name: k,
-																			value: k,
-																		}
-																	: (k as {
-																			name: string;
-																			value: string;
-																		}),
-															)}
+																...(metadataValues ?? []).map((v) => ({ name: v, value: v })),
+															]}
 															selectedValue={query.value ?? ""}
 														/>
 													</>
@@ -744,9 +647,10 @@ export default function Index() {
 
 											<div className={"sm:col-span-4"}>
 												<motion.button
+													disabled={selecting}
 													onClick={(e) => {
 														e.preventDefault();
-														selectQuery();
+														void selectQuery();
 													}}
 													whileHover={{ scale: 1.05 }}
 													whileTap={{ scale: 0.9 }}
@@ -770,7 +674,7 @@ export default function Index() {
 															d="M18.25 12L5.75 12"
 														/>
 													</svg>
-													Select contacts
+													{selecting ? "Selecting..." : "Select contacts"}
 												</motion.button>
 											</div>
 										</motion.div>
@@ -825,6 +729,11 @@ export default function Index() {
 								<div
 									className={"max-h-[400px] overflow-x-hidden overflow-y-scroll rounded border border-neutral-200 sm:col-span-6"}
 								>
+									{campaign._count.emails > campaign.emails.length && (
+										<p className={"px-6 py-3 text-sm text-neutral-600"}>
+											Showing the latest {campaign.emails.length} of {campaign._count.emails} emails
+										</p>
+									)}
 									<Table
 										values={campaign.emails.map(
 											(e: {

@@ -10,7 +10,7 @@ import NProgress from "nprogress";
 import React from "react";
 import { Toaster } from "sonner";
 import { SWRConfig } from "swr";
-import { network } from "../lib/network";
+import { NetworkError, network } from "../lib/network";
 import "nprogress/nprogress.css";
 import advancedFormat from "dayjs/plugin/advancedFormat";
 import duration from "dayjs/plugin/duration";
@@ -39,7 +39,8 @@ function App({ Component, pageProps }: AppProps) {
 	const router = useRouter();
 	const { data: user, error } = useUser();
 
-	if (error && !NO_AUTH_ROUTES.includes(router.route)) {
+	// Only a rejected session logs out. A slow or restarting server (5xx) used to send logged-in users to the login page
+	if (error instanceof NetworkError && error.status === 401 && !NO_AUTH_ROUTES.includes(router.route)) {
 		return <Redirect to={"/auth/login"} />;
 	}
 

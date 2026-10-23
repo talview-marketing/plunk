@@ -99,6 +99,7 @@ model Event {
   updatedAt DateTime @updatedAt
 
   @@index(fields: [projectId, templateId, campaignId])
+  @@index([campaignId])
   @@map("events")
 }
 
@@ -203,6 +204,9 @@ model Trigger {
   updatedAt DateTime @updatedAt
 
   @@index(fields: [contactId, eventId, actionId, createdAt])
+  @@index([eventId])
+  @@index([actionId])
+  @@index([createdAt])
   @@map("triggers")
 }
 
@@ -228,6 +232,7 @@ model Contact {
   updatedAt DateTime @updatedAt
 
   @@index(fields: [projectId])
+  @@index([projectId, createdAt])
   @@map("contacts")
 }
 
@@ -259,6 +264,10 @@ model Email {
   updatedAt DateTime @updatedAt
 
   @@index(fields: [projectId, actionId, campaignId, contactId, createdAt])
+  @@index([contactId, status, createdAt])
+  @@index([campaignId])
+  @@index([actionId])
+  @@index([createdAt])
   @@map("emails")
 }
 
@@ -300,6 +309,9 @@ model Task {
   updatedAt DateTime @updatedAt
 
   @@index([runBy, createdAt])
+  @@index([campaignId])
+  @@index([actionId])
+  @@index([contactId])
   @@map("tasks")
 }
 

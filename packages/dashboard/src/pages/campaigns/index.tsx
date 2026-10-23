@@ -62,17 +62,15 @@ export default function Index() {
 																			<div>
 																				<label className={"text-xs font-medium text-neutral-500"}>Open rate</label>
 																				<p className="mt-1 truncate text-sm text-neutral-500">
-																					{c.emails.length > 0
-																						? Math.round((c.emails.filter((e) => e.status === "OPENED").length / c.emails.length) * 100)
-																						: 0}
+																					{c._count.emails > 0 ? Math.round((c._count.opened / c._count.emails) * 100) : 0}
 																					%
 																				</p>
 																			</div>
 
-																			{c.tasks.length > 0 && (
+																			{c._count.tasks > 0 && (
 																				<div>
 																					<label className={"text-xs font-medium text-neutral-500"}>Emails in queue</label>
-																					<p className="mt-1 truncate text-sm text-neutral-500">{c.tasks.length}</p>
+																					<p className="mt-1 truncate text-sm text-neutral-500">{c._count.tasks}</p>
 																				</div>
 																			)}
 																		</>
@@ -91,7 +89,7 @@ export default function Index() {
 																<div className={"grid grid-cols-2 gap-3"}>
 																	<div>
 																		<label className={"text-xs font-medium text-neutral-500"}>Recipients</label>
-																		<p className="mt-1 truncate text-sm text-neutral-500">{c.recipients.length}</p>
+																		<p className="mt-1 truncate text-sm text-neutral-500">{c._count.recipients}</p>
 																	</div>
 
 																	<div>
@@ -99,10 +97,13 @@ export default function Index() {
 																		<p className="mt-1 truncate text-sm text-neutral-500">
 																			{c.status === "DRAFT" ? (
 																				<Badge type={"info"}>Draft</Badge>
+																			) : c._count.tasks > 0 ? (
+																				<Badge type={"info"}>Sending</Badge>
+																			) : c.status === "DELIVERED" ? (
+																				<Badge type={"success"}>Delivered</Badge>
 																			) : (
-																				<Badge type={c.tasks.length > 0 ? "info" : "success"}>
-																					{c.tasks.length > 0 ? "Sending" : "Delivered"}
-																				</Badge>
+																				// Queue is empty but Tasks never promoted it to DELIVERED: nothing went out
+																				<Badge type={"danger"}>Failed</Badge>
 																			)}
 																		</p>
 																	</div>

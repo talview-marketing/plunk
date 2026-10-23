@@ -7,7 +7,7 @@ import {useActiveProject} from './projects';
  * @param id
  */
 export function useCampaign(id: string) {
-  return useSWR(`/v1/campaigns/${id}`);
+  return useSWR(`/v1/campaigns/${id}`, { revalidateOnFocus: false, shouldRetryOnError: false });
 }
 
 /**
@@ -18,16 +18,15 @@ export function useCampaigns() {
 
   return useSWR<
     (Campaign & {
-      emails: {
-        id: string;
-        status: string;
-      }[];
-      tasks: {
-        id: string;
-      }[];
-      recipients: {
-        id: string;
-      }[];
+      _count: {
+        recipients: number;
+        emails: number;
+        tasks: number;
+        opened: number;
+      };
     })[]
-  >(activeProject ? `/projects/id/${activeProject.id}/campaigns` : null);
+  >(activeProject ? `/projects/id/${activeProject.id}/campaigns` : null, {
+    revalidateOnFocus: false,
+    shouldRetryOnError: false,
+  });
 }

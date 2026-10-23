@@ -1,5 +1,5 @@
 import { Controller, Delete, Get, Middleware, Post, Put } from "@overnightjs/core";
-import { IdentitySchemas, ProjectSchemas, UtilitySchemas } from "@plunk/shared";
+import { CampaignSchemas, IdentitySchemas, ProjectSchemas, UtilitySchemas } from "@plunk/shared";
 import type { Request, Response } from "express";
 import z from "zod";
 import { prisma } from "../database/prisma";
@@ -255,6 +255,62 @@ export class Projects {
 		const metadata = await ProjectService.metadata(projectId);
 
 		return res.status(200).json(metadata);
+	}
+
+	@Get("id/:id/contacts/metadata/values")
+	@Middleware([isAuthenticated])
+	public async getProjectMetadataValuesByID(req: Request, res: Response) {
+		const { id: projectId } = UtilitySchemas.id.parse(req.params);
+		const { key } = z.object({ key: z.string().min(1) }).parse(req.query);
+
+		const { userId } = res.locals.auth as IJwt;
+
+		const isMember = await MembershipService.isMember(projectId, userId);
+
+		if (!isMember) {
+			throw new NotAllowed();
+		}
+
+		const values = await ProjectService.metadataValues(projectId, key);
+
+		return res.status(200).json(values);
+	}
+
+	@Get("id/:id/contacts/recipients")
+	@Middleware([isAuthenticated])
+	public async getProjectRecipientsByID(req: Request, res: Response) {
+		const { id: projectId } = UtilitySchemas.id.parse(req.params);
+
+		const { userId } = res.locals.auth as IJwt;
+
+		const isMember = await MembershipService.isMember(projectId, userId);
+
+		if (!isMember) {
+			throw new NotAllowed();
+		}
+
+		const contacts = await ProjectService.contacts.recipients(projectId);
+
+		return res.status(200).json(contacts);
+	}
+
+	@Post("id/:id/contacts/audience")
+	@Middleware([isAuthenticated])
+	public async getProjectAudienceByID(req: Request, res: Response) {
+		const { id: projectId } = UtilitySchemas.id.parse(req.params);
+		const query = CampaignSchemas.audience.parse(req.body);
+
+		const { userId } = res.locals.auth as IJwt;
+
+		const isMember = await MembershipService.isMember(projectId, userId);
+
+		if (!isMember) {
+			throw new NotAllowed();
+		}
+
+		const ids = await ProjectService.contacts.audience(projectId, query);
+
+		return res.status(200).json(ids);
 	}
 
 	@Get("id/:id/contacts")

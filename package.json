@@ -1,6 +1,6 @@
 {
 	"name": "plunk",
-	"version": "1.0.15",
+	"version": "1.0.16",
 	"private": true,
 	"license": "agpl-3.0",
 	"workspaces": {

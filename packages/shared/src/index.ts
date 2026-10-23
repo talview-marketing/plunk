@@ -150,6 +150,14 @@ export const CampaignSchemas = {
 		recipients: z.array(z.string()),
 		style: z.nativeEnum(TemplateStyle).default("PLUNK"),
 	}),
+	audience: z.object({
+		events: z.array(id).optional(),
+		last: z.enum(["day", "week", "month"]).optional(),
+		notevents: z.array(id).optional(),
+		notlast: z.enum(["day", "week", "month"]).optional(),
+		data: z.string().optional(),
+		value: z.string().optional(),
+	}),
 };
 
 export const ActionSchemas = {

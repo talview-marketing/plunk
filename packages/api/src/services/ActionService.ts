@@ -1,5 +1,6 @@
 import type { Contact, Event, Project } from "@prisma/client";
 import dayjs from "dayjs";
+import signale from "signale";
 import { prisma } from "../database/prisma";
 import { ContactService } from "./ContactService";
 import { EmailService } from "./EmailService";
@@ -118,37 +119,46 @@ export class ActionService {
 					},
 				});
 
-				const { messageId } = await EmailService.send({
-					from: {
-						name: action.template.from ?? project.from ?? project.name,
-						email: project.verified && project.email ? action.template.email ?? project.email : "",
-					},
-					to: [contact.email],
-					content: {
-						subject,
-						html: EmailService.compile({
-							content: body,
-							footer: {
-								unsubscribe: action.template.type === "MARKETING",
-							},
-							contact: {
-								id: contact.id,
-							},
-							project: {
-								name: project.name,
-							},
-							isHtml: action.template.style === "HTML",
-						}),
-					},
-				});
+				// EmailService.send throws now, and several callers invoke trigger() with
+				// `void`. An unhandled rejection would take the process down, so contain
+				// the failure here and keep processing the remaining contacts.
+				try {
+					const { messageId } = await EmailService.send({
+						from: {
+							name: action.template.from ?? project.from ?? project.name,
+							email: project.verified && project.email ? action.template.email ?? project.email : "",
+						},
+						to: [contact.email],
+						content: {
+							subject,
+							html: EmailService.compile({
+								content: body,
+								footer: {
+									unsubscribe: action.template.type === "MARKETING",
+								},
+								contact: {
+									id: contact.id,
+								},
+								project: {
+									name: project.name,
+								},
+								isHtml: action.template.style === "HTML",
+							}),
+						},
+					});
 
-				await prisma.email.create({
-					data: {
-						messageId,
-						actionId: action.id,
-						contactId: contact.id,
-					},
-				});
+					await prisma.email.create({
+						data: {
+							messageId,
+							actionId: action.id,
+							contactId: contact.id,
+						},
+					});
+				} catch (e) {
+					signale.error(
+						`Action "${action.name}" failed to send to ${contact.email} from ${project.name}: ${(e as Error).message}`,
+					);
+				}
 			} else {
 				await prisma.task.create({
 					data: {

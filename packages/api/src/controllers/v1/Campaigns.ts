@@ -6,7 +6,6 @@ import { prisma } from "../../database/prisma";
 import { HttpException, NotAllowed, NotFound } from "../../exceptions";
 import { type IJwt, type ISecret, isAuthenticated, isValidSecretKey } from "../../middleware/auth";
 import { CampaignService } from "../../services/CampaignService";
-import { ContactService } from "../../services/ContactService";
 import { EmailService } from "../../services/EmailService";
 import { MembershipService } from "../../services/MembershipService";
 import { ProjectService } from "../../services/ProjectService";
@@ -61,9 +60,11 @@ export class Campaigns {
 				throw new HttpException(400, "No recipients found");
 			}
 
+			// Only queued at this point, nothing has been sent yet. Tasks.handleTasks
+			// promotes this to DELIVERED once the queue drains with emails actually sent.
 			await prisma.campaign.update({
 				where: { id: campaign.id },
-				data: { status: "DELIVERED", delivered: new Date() },
+				data: { status: "SCHEDULED" },
 			});
 
 			await prisma.event.createMany({
@@ -182,7 +183,7 @@ export class Campaigns {
 			throw new NotFound("project");
 		}
 
-		let { subject, body, recipients, style, email, from } = CampaignSchemas.create.parse(req.body);
+		const { subject, body, recipients, style, email, from } = CampaignSchemas.create.parse(req.body);
 
 		if (email && !project.verified) {
 			throw new NotAllowed("You need to attach a domain to your project to customize the sender address");
@@ -190,15 +191,6 @@ export class Campaigns {
 
 		if (email && email.split("@")[1] !== project.email?.split("@")[1]) {
 			throw new NotAllowed("The sender address must be the same domain as the project's email address");
-		}
-
-		if (recipients.length === 1 && recipients[0] === "all") {
-			const projectContacts = await prisma.contact.findMany({
-				where: { projectId: project.id, subscribed: true },
-				select: { id: true },
-			});
-
-			recipients = projectContacts.map((c) => c.id);
 		}
 
 		const campaign = await prisma.campaign.create({
@@ -212,41 +204,7 @@ export class Campaigns {
 			},
 		});
 
-		const chunkSize = 500;
-		for (let i = 0; i < recipients.length; i += chunkSize) {
-			const chunk = recipients.slice(i, i + chunkSize);
-
-			const recipientIds = await Promise.all(
-				chunk.map(async (recipient) => {
-					if (recipient.includes("@")) {
-						let contact = await ContactService.email(recipient, project.id);
-
-						if (!contact) {
-							contact = await prisma.contact.create({
-								data: {
-									email: recipient,
-									projectId: project.id,
-									subscribed: true,
-								},
-							});
-						}
-
-						return contact.id;
-					}
-
-					return recipient;
-				}),
-			);
-
-			await prisma.campaign.update({
-				where: { id: campaign.id },
-				data: {
-					recipients: {
-						connect: recipientIds.map((id) => ({ id })),
-					},
-				},
-			});
-		}
+		await CampaignService.setRecipients(campaign.id, project.id, recipients);
 
 		await redis.del(Keys.Campaign.id(campaign.id));
 		await redis.del(Keys.Project.campaigns(project.id));
@@ -265,7 +223,7 @@ export class Campaigns {
 			throw new NotFound("project");
 		}
 
-		let { id, subject, body, recipients, style, email, from } = CampaignSchemas.update.parse(req.body);
+		const { id, subject, body, recipients, style, email, from } = CampaignSchemas.update.parse(req.body);
 
 		if (email && !project.verified) {
 			throw new NotAllowed("You need to attach a domain to your project to customize the sender address");
@@ -275,22 +233,13 @@ export class Campaigns {
 			throw new NotAllowed("The sender address must be the same domain as the project's email address");
 		}
 
-		if (recipients.length === 1 && recipients[0] === "all") {
-			const projectContacts = await prisma.contact.findMany({
-				where: { projectId: project.id, subscribed: true },
-				select: { id: true },
-			});
+		const existing = await CampaignService.id(id);
 
-			recipients = projectContacts.map((c) => c.id);
-		}
-
-		let campaign = await CampaignService.id(id);
-
-		if (!campaign || campaign.projectId !== project.id) {
+		if (!existing || existing.projectId !== project.id) {
 			throw new NotFound("campaign");
 		}
 
-		campaign = await prisma.campaign.update({
+		const campaign = await prisma.campaign.update({
 			where: { id },
 			data: {
 				subject,
@@ -299,69 +248,9 @@ export class Campaigns {
 				from: from === "" ? null : from,
 				email: email === "" ? null : email,
 			},
-			include: {
-				recipients: { select: { id: true } },
-				emails: {
-					select: {
-						id: true,
-						status: true,
-						contact: { select: { id: true, email: true } },
-					},
-				},
-			},
 		});
 
-		await prisma.campaign.update({
-			where: { id },
-			data: {
-				recipients: {
-					set: [],
-				},
-			},
-		});
-
-		const chunkSize = 500;
-
-		for (let i = 0; i < campaign.recipients.length; i += chunkSize) {
-			const chunk = campaign.recipients.slice(i, i + chunkSize);
-
-			await prisma.$executeRaw`DELETE FROM "_CampaignToContact" WHERE "A" = ${campaign.id} AND "B" = ANY(${chunk.map((c) => c.id)})`;
-		}
-
-		for (let i = 0; i < recipients.length; i += chunkSize) {
-			const chunk = recipients.slice(i, i + chunkSize);
-
-			const recipientIds = await Promise.all(
-				chunk.map(async (recipient) => {
-					if (recipient.includes("@")) {
-						let contact = await ContactService.email(recipient, project.id);
-
-						if (!contact) {
-							contact = await prisma.contact.create({
-								data: {
-									email: recipient,
-									projectId: project.id,
-									subscribed: true,
-								},
-							});
-						}
-
-						return contact.id;
-					}
-
-					return recipient;
-				}),
-			);
-
-			await prisma.campaign.update({
-				where: { id: campaign.id },
-				data: {
-					recipients: {
-						connect: recipientIds.map((id) => ({ id })),
-					},
-				},
-			});
-		}
+		await CampaignService.setRecipients(campaign.id, project.id, recipients);
 
 		await redis.del(Keys.Campaign.id(campaign.id));
 		await redis.del(Keys.Project.campaigns(project.id));
